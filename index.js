@@ -2,69 +2,21 @@ var _ = require('lodash'),
     util = require('./util.js');
 
 var request = require('request').defaults({
-    baseUrl: 'https://api.bitbucket.org/2.0/'
-});
-
-var globalPickResult = {
-    'role': 'role',
-    'username': 'user.username',
-    'user_self': 'user.links.self.href',
-    'approved': 'approved'
-};
+        baseUrl: 'https://api.bitbucket.org/2.0/'
+    }),
+    pickInputs = {
+        'revision': { key: 'revision', validate: { req: true } },
+        'owner': { key: 'owner', validate: { req: true } },
+        'repo_slug': { key: 'repo_slug', validate: { req: true } }
+    },
+    pickOutputs = {
+        'role': 'role',
+        'username': 'user.username',
+        'user_self': 'user.links.self.href',
+        'approved': 'approved'
+    };
 
 module.exports = {
-
-    authParams: function (dexter) {
-        var auth = {},
-            username = dexter.environment('bitbucket_username'),
-            password = dexter.environment('bitbucket_password');
-
-        if (username && password) {
-
-            auth.user = username;
-            auth.pass = password;
-        }
-
-        return _.isEmpty(auth)? false : auth;
-    },
-
-    processResult: function (error, responce, body) {
-
-        if (error)
-
-            this.fail(error);
-
-        else if (responce && !body)
-
-            this.fail(responce.statusCode + ': Something is happened');
-
-        else if (responce && body.error)
-
-            this.fail(responce.statusCode + ': ' + JSON.stringify(body.error));
-
-        else
-
-            this.complete(util.pickResult(body, globalPickResult));
-
-    },
-
-    checkCorrectParams: function (auth, step) {
-        var result = true;
-
-        if (!auth) {
-
-            result = false;
-            this.fail('A [bitbucket_username, bitbucket_password] environment need for this module.');
-        }
-
-        if (!step.input('owner').first() || !step.input('repo_slug').first() || !step.input('revision').first()) {
-
-            result = false;
-            this.fail('A [owner, repo_slug, revision] inputs need for this module.');
-        }
-
-        return result;
-    },
 
     /**
      * The main entry point for the Dexter module
@@ -73,20 +25,27 @@ module.exports = {
      * @param {AppData} dexter Container for all data used in this workflow.
      */
     run: function(step, dexter) {
+        var credentials = dexter.provider('bitbucket').credentials(),
+            inputs = util.pickInputs(step, pickInputs),
+            validateErrors = util.checkValidateErrors(inputs, pickInputs);
 
-        var auth = this.authParams(dexter);
         // check params.
-        if (!this.checkCorrectParams(auth, step)) return;
+        if (validateErrors)
+            return this.fail(validateErrors);
 
-        var owner = step.input('owner').first().trim(),
-            repo_slug = step.input('repo_slug').first().trim(),
-            revision = step.input('revision').first().trim();
-
-        var uriLink = 'repositories/' + owner + '/' + repo_slug + '/commit/' + revision + '/approve';
+        var uriLink = 'repositories/' + inputs.owner + '/' + inputs.repo_slug + '/commit/' + inputs.revision + '/approve';
         //send API request
-        request.post({url: uriLink, form: {}, auth: auth, json: true}, function (error, responce, body) {
-
-            this.processResult(error, responce, body);
+        request.get({
+            uri: uriLink,
+            oauth: credentials,
+            json: true
+        }, function (error, response, body) {
+            if (error || (body && body.error))
+                this.fail(error || body.error);
+            else if (typeof body === 'string')
+                this.fail('Status code: ' + response.statusCode + '. Error body: ' + body);
+            else
+                this.complete(util.pickOutputs(body, pickOutputs) || {});
         }.bind(this));
     }
 };

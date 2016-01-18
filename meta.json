@@ -36,6 +36,9 @@
             "title":"Approved"
         }
     ],
+    "providers": [{
+        "name": "bitbucket"
+    }],
     "icon": "bitbucket",
     "title": "Bitbucket Post Commit Approval" /* Required.A display name for the module */
 }
